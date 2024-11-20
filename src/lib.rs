@@ -1451,8 +1451,7 @@ fn truer_exec(filename: PathBuf, pretend_to_be_vanilla: bool) -> Result<(), Stri
         if WARNING_FRAME_LOST_COUNTDOWN.load(Relaxed) != 0
             && WARNING_WHEN_LAGGING
             && *(0x8998b2 as *const bool) /* whether display fps */
-            && *SOKU_FRAMECOUNT >= 120
-        {
+            && *SOKU_FRAMECOUNT >= 120 {
             let inner = D3DRECT {
                 x1: 640 - get_num_length(60, false) as i32,
                 x2: 640 + 2,
@@ -2223,11 +2222,62 @@ fn store_alloc(u: usize) {
     }
 }
 
+// EXTERN UI FUNCTIONS
 static mut LIKELY_DESYNCED: bool = false;
 
 #[no_mangle]
 pub extern "cdecl" fn is_likely_desynced() -> bool {
     unsafe { LIKELY_DESYNCED }
+}
+
+#[no_mangle]
+pub extern "cdecl" fn get_ping() -> i32 {
+    unsafe {
+        match NEXT_DRAW_PING {
+            Some(x) => x,
+            None => -1
+        }
+    }
+}
+
+#[no_mangle]
+pub extern "cdecl" fn get_toggle_stat() -> bool {
+    unsafe { TOGGLE_STAT }
+}
+
+#[no_mangle]
+pub extern "cdecl" fn get_player_delay() -> i32 {
+    unsafe { LAST_DELAY_VALUE as i32 }
+}
+
+#[no_mangle]
+pub extern "cdecl" fn get_opponent_delay() -> i32 {
+    unsafe {
+        match NEXT_DRAW_ENEMY_DELAY {
+            Some(x) => x,
+            None => -1
+        }
+    }
+}
+
+#[no_mangle]
+pub extern "cdecl" fn get_current_rollback() -> i32 {
+    unsafe {
+        match NEXT_DRAW_ROLLBACK {
+            Some(x) => x,
+            None => -1
+        }
+    }
+}
+
+#[no_mangle]
+pub extern "cdecl" fn get_max_rollback() -> i32 {
+    unsafe {
+        match &NETCODER {
+            Some(x) => x.max_rollback as i32,
+            None => -1
+        }
+    }
 }
 
 unsafe extern "stdcall" fn heap_alloc_override(heap: isize, flags: u32, s: usize) -> *mut c_void {
@@ -2768,15 +2818,12 @@ static mut TOGGLE_STAT: bool = false;
 static mut LAST_TOGGLE: bool = false;
 
 fn draw_num(pos: (f32, f32), num: i32) {
-    let drawfn: extern "thiscall" fn(
-        ptr: *const c_void,
-        number: i32,
-        x: f32,
-        y: f32,
-        a1: i32,
-        a2: u8,
-    ) = unsafe { std::mem::transmute::<usize, _>(0x414940) };
-
+    let drawfn: extern "thiscall" fn(ptr: *const c_void,
+                                     number: i32,
+                                     x: f32,
+                                     y: f32,
+                                     a1: i32,
+                                     a2: u8) = unsafe { std::mem::transmute::<usize, _>(0x414940) };
     drawfn(0x882940 as *const c_void, num, pos.0, pos.1, 0, 0);
 }
 
