@@ -2225,6 +2225,16 @@ fn store_alloc(u: usize) {
 // EXTERN UI FUNCTIONS
 static mut LIKELY_DESYNCED: bool = false;
 
+struct UIValues {
+    likely_desynced: bool,
+    ping: i32,
+    current_rollback: i32,
+    max_rollback: i32,
+    player_delay: i32,
+    opponent_delay: i32,
+    toggle_stats: bool
+}
+
 #[no_mangle]
 pub extern "cdecl" fn is_likely_desynced() -> bool {
     unsafe { LIKELY_DESYNCED }
@@ -2242,7 +2252,7 @@ pub extern "cdecl" fn get_ping() -> i32 {
 
 #[no_mangle]
 pub extern "cdecl" fn get_toggle_stat() -> bool {
-    unsafe { TOGGLE_STAT }
+    unsafe { TOGGLE_STAT } // TODO: AIM TO REMOVE THIS FUNCTION IN FUTURE - UI TOGGLING SHOULD BE HANDLED BY GIUROLL-UI.
 }
 
 #[no_mangle]
@@ -2277,6 +2287,18 @@ pub extern "cdecl" fn get_max_rollback() -> i32 {
             Some(x) => x.max_rollback as i32,
             None => -1
         }
+    }
+}
+
+#[no_mangle]
+pub extern "cdecl" fn get_ui_values(out: &mut UIValues) -> UIValues {
+    out = UIValues {
+        likely_desynced: is_likely_desynced(),
+        ping: get_ping(),
+        current_rollback: get_current_rollback(),
+        max_rollback: get_max_rollback(),
+        opponent_delay: get_opponent_delay(),
+        toggle_stats: get_toggle_stat()
     }
 }
 
