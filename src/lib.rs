@@ -2291,15 +2291,16 @@ pub extern "cdecl" fn get_max_rollback() -> i32 {
 }
 
 #[no_mangle]
-pub extern "cdecl" fn get_ui_values(out: &mut UIValues) -> UIValues {
-    out = UIValues {
+pub extern "cdecl" fn get_ui_values(out: &mut UIValues) {
+    *out = UIValues {
         likely_desynced: is_likely_desynced(),
         ping: get_ping(),
         current_rollback: get_current_rollback(),
         max_rollback: get_max_rollback(),
+        player_delay: get_player_delay(),
         opponent_delay: get_opponent_delay(),
         toggle_stats: get_toggle_stat()
-    }
+    };
 }
 
 unsafe extern "stdcall" fn heap_alloc_override(heap: isize, flags: u32, s: usize) -> *mut c_void {
