@@ -2225,7 +2225,9 @@ fn store_alloc(u: usize) {
 // EXTERN UI FUNCTIONS
 static mut LIKELY_DESYNCED: bool = false;
 
+#[repr(C)]
 struct UIValues {
+    valid: bool,
     likely_desynced: bool,
     ping: i32,
     current_rollback: i32,
@@ -2292,7 +2294,19 @@ pub extern "cdecl" fn get_max_rollback() -> i32 {
 
 #[no_mangle]
 pub extern "cdecl" fn get_ui_values(out: &mut UIValues) {
+    out.valid = true;
+    out.likely_desynced = is_likely_desynced();
+    out.ping = get_ping();
+    out.current_rollback = get_current_rollback();
+    out.max_rollback = get_max_rollback();
+    out.player_delay = get_player_delay();
+    out.opponent_delay = get_opponent_delay();
+    out.toggle_stats = get_toggle_stat();
+    /*
+    // This code is not used because there is a case that out is a null ptr, and I am worried about
+    // memory leaks when using Box.
     *out = UIValues {
+        valid: true,
         likely_desynced: is_likely_desynced(),
         ping: get_ping(),
         current_rollback: get_current_rollback(),
@@ -2300,7 +2314,7 @@ pub extern "cdecl" fn get_ui_values(out: &mut UIValues) {
         player_delay: get_player_delay(),
         opponent_delay: get_opponent_delay(),
         toggle_stats: get_toggle_stat()
-    };
+    };*/
 }
 
 unsafe extern "stdcall" fn heap_alloc_override(heap: isize, flags: u32, s: usize) -> *mut c_void {
