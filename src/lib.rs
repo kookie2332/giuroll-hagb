@@ -1,9 +1,7 @@
-#![feature(let_chains)]
 #![feature(coroutines)]
 #![feature(iter_from_coroutine)]
 #![feature(anonymous_lifetime_in_impl_trait)]
 #![feature(panic_update_hook)]
-#![feature(panic_info_message)]
 #![feature(stmt_expr_attributes)]
 // we should manually and carefully avoid undefined behavior about
 // references to and any borrowing of static mut variables.
