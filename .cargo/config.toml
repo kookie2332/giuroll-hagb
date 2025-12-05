@@ -1,5 +1,5 @@
 [env]
 RUST_TARGET_PATH = { value = "targets" }
 
-[build]
-rustc-wrapper = "tools/msvc-target-wrapper.py"
+[target.i686-win7-windows-msvc]
+linker = "rust-lld"

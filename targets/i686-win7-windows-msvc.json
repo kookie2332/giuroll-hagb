@@ -1,160 +1,51 @@
 {
-  "abi-return-struct-as-int": true,
-  "allows-weak-linkage": false,
   "arch": "x86",
-  "binary-format": "coff",
-  "cpu": "pentium4",
-  "crt-objects-fallback": "mingw",
-  "data-layout": "e-m:x-p:32:32-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:32-n8:16:32-a:0:32-S32",
+  "data-layout": "e-m:x-p:32:32-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32-a:0:32-S32",
+  "llvm-target": "i686-pc-windows-msvc",
+  "target-endian": "little",
+  "target-pointer-width": "32",
+  "target-c-int-width": "32",
+  "os": "windows",
+  "env": "msvc",
+  "vendor": "pc",
+  "linker-flavor": "msvc",
+  "linker": "rust-lld",
+  "lld-flavor": "link",
+  "link-self-contained": true,
+  "dynamic-linking": true,
   "dll-prefix": "",
   "dll-suffix": ".dll",
-  "dll-tls-export": false,
-  "dynamic-linking": true,
-  "eh-frame-header": false,
-  "emit-debug-gdb-scripts": false,
-  "env": "gnu",
   "exe-suffix": ".exe",
-  "frame-pointer": "always",
-  "function-sections": false,
-  "is-like-windows": true,
-  "late-link-args": {
-    "gnu": [
-      "-lmsvcrt",
-      "-lmingwex",
-      "-lmingw32",
-      "-lgcc",
-      "-lmsvcrt",
-      "-lmingwex",
-      "-luser32",
-      "-lkernel32"
-    ],
-    "gnu-cc": [
-      "-lmsvcrt",
-      "-lmingwex",
-      "-lmingw32",
-      "-lgcc",
-      "-lmsvcrt",
-      "-lmingwex",
-      "-luser32",
-      "-lkernel32"
-    ],
-    "gnu-lld": [
-      "-lmsvcrt",
-      "-lmingwex",
-      "-lmingw32",
-      "-lgcc",
-      "-lmsvcrt",
-      "-lmingwex",
-      "-luser32",
-      "-lkernel32"
-    ],
-    "gnu-lld-cc": [
-      "-lmsvcrt",
-      "-lmingwex",
-      "-lmingw32",
-      "-lgcc",
-      "-lmsvcrt",
-      "-lmingwex",
-      "-luser32",
-      "-lkernel32"
-    ]
-  },
-  "late-link-args-dynamic": {
-    "gnu": [
-      "-lgcc_s"
-    ],
-    "gnu-cc": [
-      "-lgcc_s"
-    ],
-    "gnu-lld": [
-      "-lgcc_s"
-    ],
-    "gnu-lld-cc": [
-      "-lgcc_s"
-    ]
-  },
-  "late-link-args-static": {
-    "gnu": [
-      "-lgcc_eh",
-      "-l:libpthread.a"
-    ],
-    "gnu-cc": [
-      "-lgcc_eh",
-      "-l:libpthread.a"
-    ],
-    "gnu-lld": [
-      "-lgcc_eh",
-      "-l:libpthread.a"
-    ],
-    "gnu-lld-cc": [
-      "-lgcc_eh",
-      "-l:libpthread.a"
-    ]
-  },
-  "linker": "i686-w64-mingw32-gcc",
-  "linker-flavor": "gnu-cc",
-  "llvm-target": "i686-pc-windows-gnu",
+  "staticlib-prefix": "",
+  "staticlib-suffix": ".lib",
+  "target-family": ["windows"],
   "max-atomic-width": 64,
-  "metadata": {
-    "description": "32-bit MinGW (Windows 7+)",
-    "host_tools": false,
-    "std": true,
-    "tier": 3
-  },
-  "os": "windows",
-  "pre-link-args": {
-    "gnu": [
-      "--dynamicbase",
-      "--disable-auto-image-base",
-      "-m",
-      "i386pe",
-      "--large-address-aware"
-    ],
-    "gnu-cc": [
-      "-fno-use-linker-plugin",
-      "-Wl,--dynamicbase",
-      "-Wl,--disable-auto-image-base",
-      "-Wl,--large-address-aware"
-    ],
-    "gnu-lld": [
-      "--dynamicbase",
-      "--disable-auto-image-base",
-      "-m",
-      "i386pe",
-      "--large-address-aware"
-    ],
-    "gnu-lld-cc": [
-      "-fno-use-linker-plugin",
-      "-Wl,--dynamicbase",
-      "-Wl,--disable-auto-image-base",
-      "-Wl,--large-address-aware"
-    ]
-  },
-  "pre-link-objects-fallback": {
-    "dynamic-dylib": [
-      "dllcrt2.o"
-    ],
-    "dynamic-nopic-exe": [
-      "crt2.o"
-    ],
-    "dynamic-pic-exe": [
-      "crt2.o"
-    ],
-    "static-dylib": [
-      "dllcrt2.o"
-    ],
-    "static-nopic-exe": [
-      "crt2.o"
-    ],
-    "static-pic-exe": [
-      "crt2.o"
-    ]
-  },
+  "has-thread-local": true,
+  "is-like-windows": true,
+  "is-like-msvc": true,
+  "panic-strategy": "unwind",
+  "crt-static-respected": true,
+  "crt-static-allows-dylibs": true,
+  "crt-objects-fallback": false,
+  "abi-return-struct-as-int": true,
+  "archive-format": "coff",
+  "binary-format": "coff",
+  "debuginfo-kind": "pdb",
+  "emit-debug-gdb-scripts": false,
+  "frame-pointer": "maybe",
+  "split-debuginfo": "packed",
+  "supported-split-debuginfo": ["packed"],
+  "supported-sanitizers": ["address"],
   "requires-uwtable": true,
   "rustc-abi": "x86-sse2",
-  "target-family": [
-    "windows"
-  ],
-  "target-pointer-width": 32,
-  "vendor": "win7"
+  "pre-link-args": {
+    "msvc": ["/NOLOGO", "/LARGEADDRESSAWARE", "/SAFESEH"],
+    "msvc-lld": ["/NOLOGO", "/LARGEADDRESSAWARE", "/SAFESEH"]
+  },
+  "metadata": {
+    "description": "32-bit Windows 7+ (MSVC-compatible)",
+    "host_tools": true,
+    "std": true,
+    "tier": 3
+  }
 }
