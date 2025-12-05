@@ -1063,9 +1063,10 @@ fn truer_exec(filename: PathBuf, pretend_to_be_vanilla: bool) -> Result<(), Stri
             return if soundid == 0 { 1 } else { 0 };
         }
 
-        if let Some(manager) = SOUND_MANAGER.as_mut()
-            && !FORCE_SOUND_SKIP
-        {
+        if let Some(manager) = SOUND_MANAGER.as_mut() {
+            if FORCE_SOUND_SKIP {
+                return 1;
+            }
             //println!(
             //    "trying to play sound {} at frame {} with rollback {}",
             //    soundid,
@@ -1601,10 +1602,10 @@ fn truer_exec(filename: PathBuf, pretend_to_be_vanilla: bool) -> Result<(), Stri
         let in_stage_select = *(((*a).esi + 0x4f60) as *const i32) >= 1;
         if (gametype_main, is_netplay, in_stage_select, TOGGLE_STAT) == (1, true, false, true) {
             draw_num((300.0, 466.0 - 16.0), MAX_ROLLBACK_PREFERENCE as i32);
-            if let Some(time_data) = SELECT_SCENE_INPUT_SEND_TIME_DATA.lock().unwrap().as_ref()
-                && let Some(max_latency_to_show) = time_data.max_latency_to_be_shown
-            {
-                draw_num((300.0, 466.0), max_latency_to_show.as_millis() as i32);
+            if let Some(time_data) = SELECT_SCENE_INPUT_SEND_TIME_DATA.lock().unwrap().as_ref() {
+                if let Some(max_latency_to_show) = time_data.max_latency_to_be_shown {
+                    draw_num((300.0, 466.0), max_latency_to_show.as_millis() as i32);
+                }
             }
         }
     }
@@ -1959,11 +1960,13 @@ fn truer_exec(filename: PathBuf, pretend_to_be_vanilla: bool) -> Result<(), Stri
             }
             if let Ok(event) = SOKU_LOOP_EVENT.lock() {
                 // if the last signal hasn't been reset by the loop
-                if let Some(event) = *event
-                    && WaitForSingleObject(HANDLE(event), 0).0 == 0
-                {
-                    println!("frame costed too much time!");
-                    WARNING_FRAME_LOST_COUNTDOWN.store(115, Relaxed);
+                if let Some(event) = *event {
+                    if WaitForSingleObject(HANDLE(event), 0).0 == 0 {
+                        println!("frame costed too much time!");
+                        WARNING_FRAME_LOST_COUNTDOWN.store(115, Relaxed);
+                    } else if WARNING_FRAME_LOST_COUNTDOWN.load(Relaxed) != 0 {
+                        WARNING_FRAME_LOST_COUNTDOWN.fetch_sub(1, Relaxed);
+                    }
                 } else if WARNING_FRAME_LOST_COUNTDOWN.load(Relaxed) != 0 {
                     WARNING_FRAME_LOST_COUNTDOWN.fetch_sub(1, Relaxed);
                 }
@@ -2418,42 +2421,45 @@ fn update_input_time_data(buf: &[u8], packet_size: usize, is_sending: bool) {
         && matches!(buf[0], 0xe | 0xd)
         && buf[1] == 0x3
         && buf[6] == 0x3
-        && let Some(time_data) = SELECT_SCENE_INPUT_SEND_TIME_DATA.lock().unwrap().as_mut()
     {
-        let input_count: u8 = buf[7];
-        let input_pair_count = input_count.div_ceil(2);
-        let frame_id_end: usize = u32::from_le_bytes(buf[2..2 + 4].try_into().unwrap()) as usize;
-        let frame_id: usize = frame_id_end + 1 - input_pair_count as usize;
-        // println!(
-        //     "{} send/recv {} {} {}",
-        //     buf[0], is_sending, frame_id, input_count
-        // );
-        if !is_sending && time_data.last_frame_id <= frame_id && !time_data.has_received {
-            // println!("really get {}", frame_id);
-            time_data.has_received = true;
-            time_data.last_frame_id = frame_id_end;
-            time_data.last_max_latency = Some(
-                (Instant::now().saturating_duration_since(time_data.last_receive_time) / 2)
-                    .max(time_data.last_max_latency.unwrap_or(Duration::ZERO)),
-            );
-            if frame_id > time_data.last_shown_frame + 60 {
-                time_data.max_latency_to_be_shown = time_data.last_max_latency;
-                time_data.last_shown_frame = frame_id;
-                time_data.last_max_latency = None;
+        let mut guard = SELECT_SCENE_INPUT_SEND_TIME_DATA.lock().unwrap();
+        if let Some(time_data) = guard.as_mut() {
+            let input_count: u8 = buf[7];
+            let input_pair_count = input_count.div_ceil(2);
+            let frame_id_end: usize =
+                u32::from_le_bytes(buf[2..2 + 4].try_into().unwrap()) as usize;
+            let frame_id: usize = frame_id_end + 1 - input_pair_count as usize;
+            // println!(
+            //     "{} send/recv {} {} {}",
+            //     buf[0], is_sending, frame_id, input_count
+            // );
+            if !is_sending && time_data.last_frame_id <= frame_id && !time_data.has_received {
+                // println!("really get {}", frame_id);
+                time_data.has_received = true;
+                time_data.last_frame_id = frame_id_end;
+                time_data.last_max_latency = Some(
+                    (Instant::now().saturating_duration_since(time_data.last_receive_time) / 2)
+                        .max(time_data.last_max_latency.unwrap_or(Duration::ZERO)),
+                );
+                if frame_id > time_data.last_shown_frame + 60 {
+                    time_data.max_latency_to_be_shown = time_data.last_max_latency;
+                    time_data.last_shown_frame = frame_id;
+                    time_data.last_max_latency = None;
+                }
             }
-        }
 
-        if is_sending && time_data.has_received {
-            let to_get_frame_id = match buf[0] {
-                0xd => frame_id_end, // p1 is sending
-                0xe => frame_id + 1, // p2 is sending
-                _ => panic!("unreachable!"),
-            };
-            if time_data.last_frame_id < to_get_frame_id {
-                // println!("to get {}", to_get_frame_id);
-                time_data.has_received = false;
-                time_data.last_receive_time = Instant::now();
-                time_data.last_frame_id = to_get_frame_id;
+            if is_sending && time_data.has_received {
+                let to_get_frame_id = match buf[0] {
+                    0xd => frame_id_end, // p1 is sending
+                    0xe => frame_id + 1, // p2 is sending
+                    _ => panic!("unreachable!"),
+                };
+                if time_data.last_frame_id < to_get_frame_id {
+                    // println!("to get {}", to_get_frame_id);
+                    time_data.has_received = false;
+                    time_data.last_receive_time = Instant::now();
+                    time_data.last_frame_id = to_get_frame_id;
+                }
             }
         }
     }
@@ -2730,6 +2736,9 @@ fn input_to_accum(inp: &[bool; INPUT_KEYS_NUMBERS]) -> u16 {
     }
     inputaccum
 }
+
+#[cfg(test)]
+mod input_to_accum_tests;
 
 unsafe fn read_key_better(key: u8) -> bool {
     let raw_input_buffer = 0x8a01b8;
@@ -3104,14 +3113,12 @@ unsafe extern "cdecl" fn main_hook(a: *mut ilhook::x86::Registers, _b: usize) {
     }
 
     let battle_manaer = (*a).esi as *const *const u8;
-    if *battle_state == 5
-        && NETCODER.is_some()
-        && *state_sub_count as usize > 15  // ensure KO with confirmed battle result
-        && let Some(fake_battle_manager) = FAKE_BATTLE_MANAGER_FOR_TSK.as_mut()
-    {
-        fake_battle_manager.fake_left_win_count = *(*battle_manaer.offset(3)).offset(0x573);
-        fake_battle_manager.fake_right_win_count = *(*battle_manaer.offset(4)).offset(0x573);
-        fake_battle_manager.fake_battle_mode = 5;
+    if *battle_state == 5 && NETCODER.is_some() && *state_sub_count as usize > 15 {
+        if let Some(fake_battle_manager) = FAKE_BATTLE_MANAGER_FOR_TSK.as_mut() {
+            fake_battle_manager.fake_left_win_count = *(*battle_manaer.offset(3)).offset(0x573);
+            fake_battle_manager.fake_right_win_count = *(*battle_manaer.offset(4)).offset(0x573);
+            fake_battle_manager.fake_battle_mode = 5;
+        }
     }
     (*a).ebx = cur_speed;
     (*a).edi = cur_speed_iter;

@@ -1,0 +1,8 @@
+[env]
+RUST_TARGET_PATH = { value = "targets" }
+
+[build]
+rustc-wrapper = "tools/msvc-target-wrapper.sh"
+
+[target.i686-win7-windows-msvc]
+linker = "i686-w64-mingw32-gcc"
