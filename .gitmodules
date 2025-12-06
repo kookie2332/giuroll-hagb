@@ -1,6 +1,3 @@
 [submodule "injector"]
 	path = injector
 	url = https://github.com/Hagb/giuroll-injector.git
-[submodule "winres"]
-	path = winres
-	url = https://github.com/Hagb/winres.git
