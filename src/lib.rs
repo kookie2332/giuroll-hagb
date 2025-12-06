@@ -13,7 +13,6 @@ use std::fmt::Debug;
 use std::panic;
 use std::{
     any::type_name,
-    collections::HashMap,
     ffi::c_void,
     mem::align_of,
     os::windows::prelude::OsStringExt,
@@ -25,10 +24,13 @@ use std::{
     },
     time::{Duration, Instant},
 };
+mod camera;
+mod config;
 mod netcode;
 mod replay;
 mod rollback;
 mod sound;
+mod version;
 
 use ilhook::x86::{HookPoint, HookType};
 
@@ -120,7 +122,7 @@ macro_rules! println {
 
 use winapi::shared::{
     d3d9::IDirect3DDevice9,
-    d3d9types::{D3DCLEAR_TARGET, D3DCOLOR, D3DCOLOR_ARGB, D3DRECT},
+    d3d9types::{D3DCOLOR, D3DCOLOR_ARGB, D3DRECT},
 };
 
 fn warning_box(text: &str, title: &str) {
@@ -221,65 +223,15 @@ unsafe fn tamper_jmp_relative_opr<T: Sized>(dst: *mut c_void, src: T) -> T {
     return ret;
 }
 
-use version_compare::{Cmp, Version};
-const VERSION_STR: &str = env!("CARGO_PKG_VERSION");
-
-/// Compare GR version with version_string, following Semantic Versioning 2.0.0 (https://semver.org/).
-/// It returns false if version_string is an invalid version string, or
-/// returns true and assign *result = 0 (GR version = version_str), -1 (GR version < version_str), or 1 (GR version > version_str), if version_str is valid
-#[no_mangle]
-pub unsafe extern "C" fn compareVersionString(
-    version_string: *const c_char,
-    result: *mut i32,
-) -> bool {
-    if let Ok(version_str) = std::ffi::CStr::from_ptr(version_string).to_str() {
-        if let Some(ver) = version_compare::Version::from(version_str) {
-            *result = match Version::from(VERSION_STR).unwrap().compare(ver) {
-                Cmp::Eq => 0,
-                Cmp::Lt => -1,
-                Cmp::Gt => 1,
-                _ => unreachable!(),
-            };
-            return true;
-        }
-    }
-    return false;
-}
-
-/// Returns version string
-#[no_mangle]
-pub extern "C" fn getVersionString() -> *const c_char {
-    static VERSION_CSTRING: Mutex<Option<std::ffi::CString>> = Mutex::new(None);
-    let mut string = VERSION_CSTRING.lock().unwrap();
-    if string.is_none() {
-        *string = Some(std::ffi::CString::new(VERSION_STR).unwrap());
-    }
-    string.as_ref().unwrap().as_ptr()
-}
-
-/// Return GR version with given version, where version values consist of four 16 bit words, e.g.
-/// `MAJOR << 48 | MINOR << 32 | PATCH << 16 | RELEASE`.
-#[no_mangle]
-pub unsafe extern "C" fn getVersion() -> u64 {
-    return env!("DLL_VERSION").parse::<u64>().unwrap();
-}
-
-/// Compare GR version with given version, where version values consist of four 16 bit words, e.g.
-/// `MAJOR << 48 | MINOR << 32 | PATCH << 16 | RELEASE`.
-/// It returns 0 (GR version = version_str), -1 (GR version < version_str), or 1 (GR version > version_str).
-#[no_mangle]
-pub unsafe extern "C" fn compareVersion(version: u64) -> i32 {
-    match env!("DLL_VERSION").parse::<u64>().unwrap().cmp(&version) {
-        std::cmp::Ordering::Equal => 0,
-        std::cmp::Ordering::Less => -1,
-        std::cmp::Ordering::Greater => 1,
-    }
-}
-
-#[no_mangle]
-pub extern "C" fn getPriority() -> i32 {
-    1000
-}
+use camera::{
+    apply_config as apply_camera_config, cbattle_process_smooth, clear_smoothed_transform,
+    draw_block, enable_runtime_smoothing, reset_state as reset_camera_state, save_last_transform,
+    smoothing_allowed,
+};
+use config::GiurollConfig;
+pub use version::{
+    compareVersion, compareVersionString, getPriority, getVersion, getVersionString, VERSION_STR,
+};
 
 #[no_mangle]
 pub unsafe extern "C" fn addRollbackCb(cb: *const Callbacks) {
@@ -471,161 +423,6 @@ pub fn force_sound_skip(soundid: usize) {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
-#[repr(C)]
-struct F32 {
-    f: f32,
-}
-
-impl PartialEq for F32 {
-    fn eq(&self, other: &Self) -> bool {
-        return self.f.to_ne_bytes() == other.f.to_ne_bytes();
-    }
-}
-impl Eq for F32 {}
-
-#[derive(Debug, Clone, Copy)]
-#[repr(C)]
-struct XY {
-    x: f32,
-    y: f32,
-}
-
-impl PartialEq for XY {
-    fn eq(&self, other: &Self) -> bool {
-        return self.x.to_ne_bytes() == other.x.to_ne_bytes()
-            && self.y.to_ne_bytes() == other.y.to_ne_bytes();
-    }
-}
-impl Eq for XY {}
-impl std::ops::Add<XY> for XY {
-    type Output = XY;
-
-    fn add(self, rhs: XY) -> Self::Output {
-        Self {
-            x: self.x + rhs.x,
-            y: self.y + rhs.y,
-        }
-    }
-}
-
-impl std::ops::Sub<XY> for XY {
-    type Output = XY;
-
-    fn sub(self, rhs: XY) -> Self::Output {
-        Self {
-            x: self.x - rhs.x,
-            y: self.y - rhs.y,
-        }
-    }
-}
-
-impl std::ops::Mul<f32> for XY {
-    type Output = XY;
-
-    fn mul(self, rhs: f32) -> Self::Output {
-        Self {
-            x: self.x * rhs,
-            y: self.y * rhs,
-        }
-    }
-}
-
-impl std::ops::Div<f32> for XY {
-    type Output = XY;
-
-    fn div(self, rhs: f32) -> Self::Output {
-        Self {
-            x: self.x / rhs,
-            y: self.y / rhs,
-        }
-    }
-}
-
-impl XY {
-    fn dot_prod(self, rhs: XY) -> f32 {
-        self.x * rhs.x + self.y * rhs.y
-    }
-
-    fn projection_of(self, rhs: XY) -> XY {
-        // f = self / self.length() * self.dot_prod(rhs) / self.length();
-        self * (self.dot_prod(rhs) / self.dot_prod(self))
-    }
-}
-
-#[derive(Debug, PartialEq, Eq, Clone)]
-struct CameraTransform {
-    scale_affected_only_by_smooth: F32,              // scale
-    xy_affected_only_by_smooth: XY,                  // and background transform
-    shake_degress_affected_only_by_smooth: [F32; 2], // shake degrees
-    shake_affected_by_game_and_smooth: F32,          // shake
-    determined_by_smooth1: [F32; 2],                 // final transform
-    determined_by_smooth2: [F32; 4],                 // unknown
-    determined_by_smooth3: [F32; 2],                 // shake x y
-}
-impl CameraTransform {
-    unsafe fn dump() -> Self {
-        let camera: usize = 0x00898600;
-        Self {
-            scale_affected_only_by_smooth: *((camera + 0x14) as *const F32),
-            xy_affected_only_by_smooth: *((camera + 0x18) as *const XY),
-            shake_degress_affected_only_by_smooth: *((camera + 0x38) as *const [F32; 2]),
-            shake_affected_by_game_and_smooth: *((camera + 0x40) as *const F32),
-            determined_by_smooth3: *((camera + 0x30) as *const [F32; 2]),
-            determined_by_smooth1: *((camera + 0x0c) as *const [F32; 2]),
-            determined_by_smooth2: *((camera + 0x5c) as *const [F32; 4]),
-        }
-    }
-    unsafe fn restore_all(&self) -> Self {
-        let ori = Self::dump();
-        self.restore_affected_only_by_smooth();
-        self.restore_shake_affected_by_game_and_smooth();
-        self.restore_determined_by_smooth();
-        ori
-    }
-    unsafe fn restore_affected_only_by_smooth(&self) {
-        let camera: usize = 0x00898600;
-        *((camera + 0x14) as *mut F32) = self.scale_affected_only_by_smooth;
-        *((camera + 0x18) as *mut XY) = self.xy_affected_only_by_smooth;
-        *((camera + 0x38) as *mut [F32; 2]) = self.shake_degress_affected_only_by_smooth;
-    }
-    unsafe fn restore_shake_affected_by_game_and_smooth(&self) {
-        let camera: usize = 0x00898600;
-        *((camera + 0x40) as *mut F32) = self.shake_affected_by_game_and_smooth;
-    }
-    unsafe fn restore_determined_by_smooth(&self) {
-        let camera: usize = 0x00898600;
-        *((camera + 0x0c) as *mut [F32; 2]) = self.determined_by_smooth1;
-        *((camera + 0x5c) as *mut [F32; 4]) = self.determined_by_smooth2;
-        *((camera + 0x30) as *mut [F32; 2]) = self.determined_by_smooth3;
-    }
-    unsafe fn validate_after_partially_modified(&mut self) {
-        if self.shake_affected_by_game_and_smooth.f <= 1.0 {
-            self.determined_by_smooth3 = [F32 { f: 0.0 }, F32 { f: 0.0 }];
-        }
-    }
-    unsafe fn get_target_xy() -> XY {
-        let camera: usize = 0x00898600;
-        *((camera + 0) as *const XY)
-    }
-    unsafe fn get_target_scale() -> f32 {
-        let camera: usize = 0x00898600;
-        *((camera + 0x8) as *const f32)
-    }
-}
-
-static mut CAMERA_ACTUAL_SMOOTH_TRANSFORM: Option<CameraTransform> = None;
-static mut LAST_IDEAL_CAMERA: Option<CameraTransform> = None;
-static mut LAST_CAMERA_BEFORE_SMOOTH: Option<CameraTransform> = None;
-static mut SMOOTH_ENABLED_CONFIG: bool = true;
-static mut SMOOTH_INCREASING_SCALE_CORRECTION: Option<f32> = None;
-static mut SMOOTH_DECREASING_SCALE_CORRECTION: Option<f32> = None;
-static mut SMOOTH_X_CORRECTION: Option<f32> = None;
-static mut SMOOTH_Y_CORRECTION: Option<f32> = None;
-static mut SMOOTH: bool = false;
-
-static mut LAST_SMOOTHED_FRAMECOUNT: usize = 0;
-
 //returns None on .ini errors
 fn truer_exec(filename: PathBuf, pretend_to_be_vanilla: bool) -> Result<(), String> {
     panic::update_hook(|prev, info| {
@@ -687,10 +484,7 @@ fn truer_exec(filename: PathBuf, pretend_to_be_vanilla: bool) -> Result<(), Stri
     filepath.push("giuroll.ini");
     //println!("{:?}", filepath);
 
-    let conf = match mininip::parse::parse_file(filepath) {
-        Ok(x) => x,
-        Err(e) => return Err(format!("Failed to parse ini: {}", e)),
-    };
+    let config = GiurollConfig::from_file(filepath, pretend_to_be_vanilla)?;
 
     #[cfg(feature = "logtofile")]
     {
@@ -714,142 +508,11 @@ fn truer_exec(filename: PathBuf, pretend_to_be_vanilla: bool) -> Result<(), Stri
         MEMORY_SENDER_ALLOC = Some(s);
     }
 
-    fn read_ini_bool(
-        conf: &HashMap<Identifier, Value>,
-        section: &str,
-        key: &str,
-        default: bool,
-    ) -> bool {
-        conf.get(&Identifier::new(Some(section.to_string()), key.to_string()))
-            .map(|x| match x {
-                Value::Bool(x) => *x,
-                _ => todo!("non bool .ini entry"),
-            })
-            .unwrap_or(default)
-    }
-
-    fn read_ini_int_hex(
-        conf: &HashMap<Identifier, Value>,
-        section: &str,
-        key: &str,
-        default: i64,
-    ) -> i64 {
-        conf.get(&Identifier::new(Some(section.to_string()), key.to_string()))
-            .map(|x| match x {
-                Value::Int(x) => *x,
-                Value::Raw(x) | Value::Str(x) => {
-                    i64::from_str_radix(x.strip_prefix("0x").unwrap(), 16).unwrap()
-                }
-                _ => todo!("non integer .ini entry"),
-            })
-            .unwrap_or(default)
-    }
-
-    fn read_ini_string(
-        conf: &HashMap<Identifier, Value>,
-        section: &str,
-        key: &str,
-        default: String,
-    ) -> String {
-        conf.get(&Identifier::new(Some(section.to_string()), key.to_string()))
-            .map(|x| match x {
-                Value::Str(x) => x.clone(),
-                _ => todo!("non string .ini entry"),
-            })
-            .unwrap_or(default)
-    }
-
-    let inc = read_ini_int_hex(&conf, "Keyboard", "increase_delay_key", 0);
-    let dec = read_ini_int_hex(&conf, "Keyboard", "decrease_delay_key", 0);
-    let rdec = read_ini_int_hex(&conf, "Keyboard", "decrease_max_rollback_key", 0x0a);
-    let rinc = read_ini_int_hex(&conf, "Keyboard", "increase_max_rollback_key", 0x0b);
-    let net = read_ini_int_hex(&conf, "Keyboard", "toggle_network_stats", 0);
-    let exit_takeover = read_ini_int_hex(&conf, "Keyboard", "exit_takeover", 0x10);
-    let p1_takeover = read_ini_int_hex(&conf, "Keyboard", "p1_takeover", 0x21);
-    let p2_takeover = read_ini_int_hex(&conf, "Keyboard", "p2_takeover", 0x22);
-    let set_or_retry_takeover = read_ini_int_hex(&conf, "Keyboard", "set_or_retry_takeover", 0x13);
-    let spin = read_ini_int_hex(&conf, "FramerateFix", "spin_amount", 1500);
-    let f62_enabled = read_ini_bool(&conf, "FramerateFix", "enable_f62", cfg!(feature = "f62"));
-    let network_menu = read_ini_bool(&conf, "Netplay", "enable_network_stats_by_default", false);
-    let default_delay = read_ini_int_hex(&conf, "Netplay", "default_delay", 2).clamp(0, 9);
-    let autodelay_enabled = read_ini_bool(&conf, "Netplay", "enable_auto_delay", true);
-    let freeze_mitigation = read_ini_bool(&conf, "Netplay", "freeze_mitigation__", false);
-    let autodelay_rollback = read_ini_int_hex(&conf, "Netplay", "auto_delay_rollback", 0);
-    let smooth_camera = read_ini_bool(&conf, "Netplay", "smooth_camera", true);
-    let smooth_decreasing_scale_correction = read_ini_int_hex(
-        &conf,
-        "SmoothCamera",
-        "decreasing_scale_correction_half_life__",
-        15,
-    );
-    let smooth_increasing_scale_correction = read_ini_int_hex(
-        &conf,
-        "SmoothCamera",
-        "increasing_scale_correction_half_life__",
-        60,
-    );
-    let smooth_x_correction =
-        read_ini_int_hex(&conf, "SmoothCamera", "x_correction_half_life__", 21);
-    let smooth_y_correction =
-        read_ini_int_hex(&conf, "SmoothCamera", "y_correction_half_life__", 21);
-    let max_rollback_preference =
-        read_ini_int_hex(&conf, "Netplay", "max_rollback_preference", 6).clamp(0, 15) as u8;
-    let warning_when_lagging = read_ini_bool(&conf, "Misc", "warning_when_lagging", true);
-    let soku2_compat_mode = read_ini_bool(&conf, "Misc", "soku2_compatibility_mode", false);
-    let enable_println = read_ini_bool(
-        &conf,
-        "Misc",
-        "enable_println",
-        cfg!(feature = "allocconsole") || ISDEBUG,
-    );
-    let enable_check_mode = read_ini_bool(&conf, "Misc", "enable_check_mode", false);
-    let turning_off_all_extra_ui = read_ini_bool(
-        &conf,
-        "Misc",
-        "turning_off_all_extra_ui",
-        pretend_to_be_vanilla,
-    );
-    let default_delay_takeover =
-        read_ini_int_hex(&conf, "Takeover", "default_delay", 0).clamp(0, 9);
-    let outer_color: D3DCOLOR = read_ini_int_hex(
-        &conf,
-        "Takeover",
-        "progress_bar_outer_color",
-        D3DCOLOR_ARGB(0xff, 0xff, 0, 0) as i64,
-    ) as D3DCOLOR;
-    let inside_color: D3DCOLOR = read_ini_int_hex(
-        &conf,
-        "Takeover",
-        "progress_bar_inside_color",
-        D3DCOLOR_ARGB(0xff, 0, 0, 0xff) as i64,
-    ) as D3DCOLOR;
-    let progress_color: D3DCOLOR = read_ini_int_hex(
-        &conf,
-        "Takeover",
-        "progress_bar_progress_color",
-        D3DCOLOR_ARGB(0xff, 0xff, 0xff, 0) as i64,
-    ) as D3DCOLOR;
-    let takeover_color: D3DCOLOR = read_ini_int_hex(
-        &conf,
-        "Takeover",
-        "takeover_color",
-        D3DCOLOR_ARGB(0xff, 0, 0xff, 0) as i64,
-    ) as D3DCOLOR;
-    let center_x_p1 = read_ini_int_hex(&conf, "Takeover", "progress_bar_center_x_p1", 224);
-    let center_y_p1 = read_ini_int_hex(&conf, "Takeover", "progress_bar_center_y_p1", 428);
-    let center_x_p2 = read_ini_int_hex(&conf, "Takeover", "progress_bar_center_x_p2", 640 - 224);
-    let center_y_p2 = read_ini_int_hex(&conf, "Takeover", "progress_bar_center_y_p2", 428);
-    let inside_half_height =
-        read_ini_int_hex(&conf, "Takeover", "progress_bar_inside_half_height", 7);
-    let inside_half_width =
-        read_ini_int_hex(&conf, "Takeover", "progress_bar_inside_half_width", 58);
-    let outer_half_height =
-        read_ini_int_hex(&conf, "Takeover", "progress_bar_outer_half_height", 9);
-    let outer_half_width = read_ini_int_hex(&conf, "Takeover", "progress_bar_outer_half_width", 60);
+    let turning_off_all_extra_ui = config.turning_off_all_extra_ui;
 
     //soku2 compatibility. Mods should change character size data themselves using exported functions. This is a temporary solution until soku2 team can implement that functionality.
     unsafe {
-        if soku2_compat_mode {
+        if config.soku2_compatibility_mode {
             const CHARSIZEDATA_A: [usize; 35] = [
                 2236, 2220, 2208, 2244, 2216, 2284, 2196, 2220, 2260, 2200, 2232, 2200, 2200, 2216,
                 2352, 2224, 2196, 2196, 2216, 2216, 0, 2208, 2236, 2232, 2196, 2196, 2216, 2216,
@@ -893,80 +556,45 @@ fn truer_exec(filename: PathBuf, pretend_to_be_vanilla: bool) -> Result<(), Stri
     }
 
     #[allow(unused_mut)]
-    let mut verstr: String = VERSION_STR.to_string();
-    if let Some(remark) = option_env!("VERSION_REMARK") {
-        verstr += " ";
-        verstr += remark;
-    }
-    #[cfg(feature = "lowframetest")]
-    {
-        verstr += " low_frame_test"
-    };
-    if f62_enabled {
-        verstr += " CN";
-    }
-    let title = read_ini_string(
-        &conf,
-        "Misc",
-        "game_title",
-        match pretend_to_be_vanilla {
-            true => "% + $",
-            false => "Touhou Hisoutensoku + $",
-        }
-        .to_string(),
-    );
-
-    let verstr = format!("Giuroll {}", verstr);
-
-    let title = title.replace('$', &verstr);
-
     unsafe {
-        F62_ENABLED = f62_enabled;
-        SPIN_TIME_MICROSECOND = spin as i128;
-        INCREASE_DELAY_KEY = inc as u8;
-        DECREASE_DELAY_KEY = dec as u8;
-        INCREASE_MAX_ROLLBACK_KEY = rinc as u8;
-        DECREASE_MAX_ROLLBACK_KEY = rdec as u8;
-        TOGGLE_STAT_KEY = net as u8;
-        TAKEOVER_KEYS_SCHEME[0] = exit_takeover as u8;
-        TAKEOVER_KEYS_SCHEME[1] = p1_takeover as u8;
-        TAKEOVER_KEYS_SCHEME[2] = p2_takeover as u8;
-        TAKEOVER_KEYS_SCHEME[3] = set_or_retry_takeover as u8;
-        TOGGLE_STAT = network_menu;
-        LAST_DELAY_VALUE = default_delay as usize;
-        DEFAULT_DELAY_VALUE = default_delay as usize;
-        AUTODELAY_ENABLED = autodelay_enabled;
-        AUTODELAY_ROLLBACK = autodelay_rollback as i8;
-        LAST_DELAY_VALUE_TAKEOVER = default_delay_takeover as usize;
-        OUTER_COLOR = outer_color;
-        INSIDE_COLOR = inside_color;
-        PROGRESS_COLOR = progress_color;
-        TAKEOVER_COLOR = takeover_color;
-        CENTER_X_P1 = center_x_p1 as i32;
-        CENTER_X_P2 = center_x_p2 as i32;
-        CENTER_Y_P1 = center_y_p1 as i32;
-        CENTER_Y_P2 = center_y_p2 as i32;
-        INSIDE_HALF_HEIGHT = inside_half_height as i32;
-        INSIDE_HALF_WIDTH = inside_half_width as i32;
-        OUTER_HALF_HEIGHT = outer_half_height as i32;
-        OUTER_HALF_WIDTH = outer_half_width as i32;
-        FREEZE_MITIGATION = freeze_mitigation;
-        ENABLE_PRINTLN = enable_println;
-        ENABLE_CHECK_MODE = enable_check_mode;
-        WARNING_WHEN_LAGGING = warning_when_lagging;
-        MAX_ROLLBACK_PREFERENCE = max_rollback_preference;
-        SMOOTH_ENABLED_CONFIG = smooth_camera;
-        let half_life_to_correction = |half_life: i64| match half_life {
-            0 => 1.0,
-            x => 1.0 - 0.5_f32.powf(1.0 / x.max(1) as f32),
-        };
-        SMOOTH_INCREASING_SCALE_CORRECTION =
-            Some(half_life_to_correction(smooth_decreasing_scale_correction));
-        SMOOTH_DECREASING_SCALE_CORRECTION =
-            Some(half_life_to_correction(smooth_increasing_scale_correction));
-        SMOOTH_X_CORRECTION = Some(half_life_to_correction(smooth_x_correction));
-        SMOOTH_Y_CORRECTION = Some(half_life_to_correction(smooth_y_correction));
+        F62_ENABLED = config.enable_f62;
+        SPIN_TIME_MICROSECOND = config.spin_amount as i128;
+        INCREASE_DELAY_KEY = config.increase_delay_key as u8;
+        DECREASE_DELAY_KEY = config.decrease_delay_key as u8;
+        INCREASE_MAX_ROLLBACK_KEY = config.increase_max_rollback_key as u8;
+        DECREASE_MAX_ROLLBACK_KEY = config.decrease_max_rollback_key as u8;
+        TOGGLE_STAT_KEY = config.toggle_network_stats as u8;
+        TAKEOVER_KEYS_SCHEME[0] = config.exit_takeover as u8;
+        TAKEOVER_KEYS_SCHEME[1] = config.p1_takeover as u8;
+        TAKEOVER_KEYS_SCHEME[2] = config.p2_takeover as u8;
+        TAKEOVER_KEYS_SCHEME[3] = config.set_or_retry_takeover as u8;
+        TOGGLE_STAT = config.enable_network_stats_by_default;
+        LAST_DELAY_VALUE = config.default_delay as usize;
+        DEFAULT_DELAY_VALUE = config.default_delay as usize;
+        AUTODELAY_ENABLED = config.auto_delay_enabled;
+        AUTODELAY_ROLLBACK = config.auto_delay_rollback as i8;
+        LAST_DELAY_VALUE_TAKEOVER = config.default_delay_takeover as usize;
+        OUTER_COLOR = config.outer_color;
+        INSIDE_COLOR = config.inside_color;
+        PROGRESS_COLOR = config.progress_color;
+        TAKEOVER_COLOR = config.takeover_color;
+        CENTER_X_P1 = config.center_x_p1 as i32;
+        CENTER_X_P2 = config.center_x_p2 as i32;
+        CENTER_Y_P1 = config.center_y_p1 as i32;
+        CENTER_Y_P2 = config.center_y_p2 as i32;
+        INSIDE_HALF_HEIGHT = config.inside_half_height as i32;
+        INSIDE_HALF_WIDTH = config.inside_half_width as i32;
+        OUTER_HALF_HEIGHT = config.outer_half_height as i32;
+        OUTER_HALF_WIDTH = config.outer_half_width as i32;
+        FREEZE_MITIGATION = config.freeze_mitigation;
+        ENABLE_PRINTLN = config.enable_println;
+        ENABLE_CHECK_MODE = config.enable_check_mode;
+        WARNING_WHEN_LAGGING = config.warning_when_lagging;
+        MAX_ROLLBACK_PREFERENCE = config.max_rollback_preference;
+        apply_camera_config(&config);
     }
+
+    let title = config.title.clone();
 
     unsafe {
         FAKE_BATTLE_MANAGER_FOR_TSK = Some(FakeBattleManagerForTsk::new_box());
@@ -1206,10 +834,7 @@ fn truer_exec(filename: PathBuf, pretend_to_be_vanilla: bool) -> Result<(), Stri
         println!("Memory leak: {} bytes", MEMORY_LEAK);
         MEMORY_LEAK = 0;
         LAST_M_LEN = 0;
-        CAMERA_ACTUAL_SMOOTH_TRANSFORM = None;
-        LAST_IDEAL_CAMERA = None;
-        LAST_CAMERA_BEFORE_SMOOTH = None;
-        SMOOTH = false;
+        reset_camera_state();
 
         WARNING_FRAME_MISSING_1_COUNTDOWN = 0;
         WARNING_FRAME_MISSING_2_COUNTDOWN = 0;
@@ -1292,128 +917,6 @@ fn truer_exec(filename: PathBuf, pretend_to_be_vanilla: bool) -> Result<(), Stri
     };
     std::mem::forget(new);
 
-    unsafe fn draw_block(device: *const IDirect3DDevice9, inner: &D3DRECT, color: D3DCOLOR) {
-        let border = D3DRECT {
-            x1: inner.x1.min(inner.x2) - 2,
-            x2: inner.x1.max(inner.x2) + 2,
-            y1: inner.y1.min(inner.y2) - 2,
-            y2: inner.y1.max(inner.y2) + 2,
-        };
-        (*device).Clear(
-            1,
-            &border,
-            D3DCLEAR_TARGET,
-            D3DCOLOR_ARGB(0xff, 0, 0, 0),
-            0.0,
-            0,
-        );
-        (*device).Clear(1, inner, D3DCLEAR_TARGET, color, 0.0, 0);
-    }
-
-    unsafe extern "thiscall" fn save_last_transform(camera: usize) {
-        LAST_CAMERA_BEFORE_SMOOTH = Some(CameraTransform::dump());
-        let transform_smoothly: unsafe extern "thiscall" fn(usize) = std::mem::transmute(0x429040);
-        transform_smoothly(camera);
-    }
-
-    unsafe fn cbattle_process_smooth(
-        cbattle_process: unsafe extern "thiscall" fn(usize) -> usize,
-        cbattle: usize,
-    ) -> usize {
-        if let Some(last_ideal) = LAST_IDEAL_CAMERA.take() {
-            last_ideal.restore_all();
-        }
-        let ret = cbattle_process(cbattle);
-        if SMOOTH {
-            let ideal = CameraTransform::dump();
-            if let Some(mut last_smoothed) = CAMERA_ACTUAL_SMOOTH_TRANSFORM.take() {
-                // smooth camera:
-                // If there isn't rollback, it is expected to provide the graphics same with the ideal one.
-                // So set the "shake" field.
-                if LAST_SMOOTHED_FRAMECOUNT > *SOKU_FRAMECOUNT {
-                    println!(
-                        "Smooth when rewinding? last: {}, current: {}",
-                        LAST_SMOOTHED_FRAMECOUNT, *SOKU_FRAMECOUNT
-                    );
-                } else if LAST_SMOOTHED_FRAMECOUNT == *SOKU_FRAMECOUNT {
-                    // If this frame is paused, don't set shake or smooth again, because it has been
-                    // smoothed and the graphic is expected to be frozen when the frame is paused.
-                    // It has been smoothed because the current netcode will not pause after stepping.
-                    // However it is still necessary to restore, since the camera was also covered.
-                    last_smoothed.restore_all();
-                } else {
-                    if LAST_SMOOTHED_FRAMECOUNT + 1 < *SOKU_FRAMECOUNT {
-                        println!(
-                            "Smooth when fast forwarding? last: {}, current: {}",
-                            LAST_SMOOTHED_FRAMECOUNT, *SOKU_FRAMECOUNT
-                        );
-                    }
-                    if let Some(before) = LAST_CAMERA_BEFORE_SMOOTH.as_ref() {
-                        last_smoothed.shake_affected_by_game_and_smooth = F32 {
-                            f: before.shake_affected_by_game_and_smooth.f,
-                        };
-
-                        let clamp_unordered =
-                            |a: f32, o1: f32, o2: f32| a.clamp(o1.min(o2), o1.max(o2));
-                        let target_scale = CameraTransform::get_target_scale();
-                        let scale = last_smoothed.scale_affected_only_by_smooth.f;
-                        let actual_scale = before.scale_affected_only_by_smooth.f;
-                        let diff_to_target = target_scale - scale;
-                        let diff_to_actual = actual_scale - scale;
-                        let diff = clamp_unordered(diff_to_actual, 0.0, diff_to_target);
-                        if diff.abs() >= 0.01 {
-                            if target_scale > scale {
-                                if let Some(c) = SMOOTH_INCREASING_SCALE_CORRECTION {
-                                    last_smoothed.scale_affected_only_by_smooth.f += diff * c;
-                                }
-                            } else {
-                                if let Some(c) = SMOOTH_DECREASING_SCALE_CORRECTION {
-                                    last_smoothed.scale_affected_only_by_smooth.f += diff * c;
-                                }
-                            }
-                        }
-
-                        let target_xy = CameraTransform::get_target_xy();
-                        let xy = last_smoothed.xy_affected_only_by_smooth;
-                        let actual_xy = before.xy_affected_only_by_smooth;
-                        let diff_to_target = target_xy - xy;
-                        let diff_to_actual = actual_xy - xy;
-                        if diff_to_target.x.abs() > 1.0 || diff_to_target.y.abs() > 1.0 {
-                            let mut diff = diff_to_target.projection_of(diff_to_actual);
-                            diff.x = clamp_unordered(diff.x, 0.0, diff_to_target.x);
-                            diff.y = clamp_unordered(diff.y, 0.0, diff_to_target.y);
-                            if diff.x.abs() > 1.0 || diff.y.abs() > 1.0 {
-                                if let Some(c) = SMOOTH_X_CORRECTION {
-                                    last_smoothed.xy_affected_only_by_smooth.x = xy.x + diff.x * c;
-                                }
-                                if let Some(c) = SMOOTH_Y_CORRECTION {
-                                    last_smoothed.xy_affected_only_by_smooth.y = xy.y + diff.y * c;
-                                }
-                            }
-                        }
-
-                        last_smoothed.validate_after_partially_modified();
-                    }
-                    last_smoothed.restore_all();
-                    let transform_smoothly: unsafe extern "thiscall" fn(usize) =
-                        std::mem::transmute(0x429040);
-                    let camera: usize = 0x00898600;
-                    transform_smoothly(camera);
-                }
-                let smoothed = CameraTransform::dump();
-                assert_eq!(
-                    smoothed.shake_affected_by_game_and_smooth,
-                    ideal.shake_affected_by_game_and_smooth
-                );
-            }
-            // dump smoothed camera
-            CAMERA_ACTUAL_SMOOTH_TRANSFORM = Some(CameraTransform::dump());
-            LAST_SMOOTHED_FRAMECOUNT = *SOKU_FRAMECOUNT;
-            assert!(LAST_IDEAL_CAMERA.is_none());
-            LAST_IDEAL_CAMERA = Some(ideal);
-        }
-        return ret;
-    }
     unsafe {
         static mut CBATTLE_PROCESS: Option<unsafe extern "thiscall" fn(usize) -> usize> = None;
         unsafe extern "thiscall" fn cbattle_render(cbattle: usize) -> usize {
@@ -2076,7 +1579,7 @@ fn truer_exec(filename: PathBuf, pretend_to_be_vanilla: bool) -> Result<(), Stri
         unsafe { ilhook::x86::Hooker::new(0x4171c7, HookType::JmpBack(sniff_sent), 0).hook(5) };
     std::mem::forget(new);
 
-    if freeze_mitigation {
+    if config.freeze_mitigation {
         unsafe {
             tamper_jmp_relative_opr(
                 0x0041dae5 as *mut c_void,
@@ -2166,7 +1669,7 @@ static mut NEXT_DRAW_ENEMY_DELAY: Option<i32> = None;
 static mut _NEXT_DRAW_PACKET_LOSS: Option<i32> = None;
 static mut _NEXT_DRAW_PACKET_DESYNC: Option<i32> = None;
 
-const SOKU_FRAMECOUNT: *mut usize = 0x8985d8 as *mut usize;
+pub(crate) const SOKU_FRAMECOUNT: *mut usize = 0x8985d8 as *mut usize;
 use windows::Win32::System::Threading::GetCurrentThreadId;
 
 // static FREEMUTEX: Mutex<BTreeSet<usize>> = Mutex::new(BTreeSet::new());
@@ -2963,8 +2466,8 @@ unsafe fn handle_online(
         netcoder.display_stats = TOGGLE_STAT;
         NETCODER = Some(netcoder);
 
-        if SMOOTH_ENABLED_CONFIG {
-            SMOOTH = true;
+        if smoothing_allowed() {
+            enable_runtime_smoothing();
         }
         //return;
     }
@@ -3050,7 +2553,7 @@ unsafe extern "cdecl" fn main_hook(a: *mut ilhook::x86::Registers, _b: usize) {
     let is_netplay = *(0x8986a0 as *const usize) != 0;
     IS_FIRST_READ_INPUTS = true;
     if framecount == 0 {
-        CAMERA_ACTUAL_SMOOTH_TRANSFORM = None;
+        clear_smoothed_transform();
     }
 
     match (gametype_main, is_netplay) {

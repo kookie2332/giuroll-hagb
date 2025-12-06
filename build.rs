@@ -39,7 +39,9 @@ fn main() {
     }
 
     if env::var("CARGO_CFG_TARGET_ENV").as_deref() == Ok("msvc")
-        && env::var("HOST").map(|h| !h.contains("windows")).unwrap_or(false)
+        && env::var("HOST")
+            .map(|h| !h.contains("windows"))
+            .unwrap_or(false)
     {
         println!("cargo:warning=Skipping winresource because MSVC resource tools are unavailable on this host");
         return;

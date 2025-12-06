@@ -157,19 +157,19 @@ pub unsafe fn render_replay_progress_bar_and_numbers() {
 
     if RE_PLAY_PAUSE == 0 {
         if let Some(replay) = &RE_PLAY {
-        let frame_count = (*SOKU_FRAMECOUNT - replay.frame) as i32;
-        let frame_half_len = (get_num_length(frame_count, true) / 2.0) as i32;
-        let outer = D3DRECT {
-            x1: center_x - frame_half_len,
-            x2: center_x + frame_half_len,
-            y1: center_y - OUTER_HALF_HEIGHT,
-            y2: center_y + OUTER_HALF_HEIGHT,
-        };
-        (**D3D9_DEVICE).Clear(1, &outer, D3DCLEAR_TARGET, TAKEOVER_COLOR, 0.0, 0);
-        draw_num_x_center(
-            (center_x as f32, (center_y - INSIDE_HALF_HEIGHT) as f32),
-            frame_count,
-        );
+            let frame_count = (*SOKU_FRAMECOUNT - replay.frame) as i32;
+            let frame_half_len = (get_num_length(frame_count, true) / 2.0) as i32;
+            let outer = D3DRECT {
+                x1: center_x - frame_half_len,
+                x2: center_x + frame_half_len,
+                y1: center_y - OUTER_HALF_HEIGHT,
+                y2: center_y + OUTER_HALF_HEIGHT,
+            };
+            (**D3D9_DEVICE).Clear(1, &outer, D3DCLEAR_TARGET, TAKEOVER_COLOR, 0.0, 0);
+            draw_num_x_center(
+                (center_x as f32, (center_y - INSIDE_HALF_HEIGHT) as f32),
+                frame_count,
+            );
         }
     } else {
         let outer = D3DRECT {
