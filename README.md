@@ -52,6 +52,12 @@ cargo +nightly-2025-12-01 build --target i686-win7-windows-msvc -Z build-std --r
 For debugging/developmental purposes, you may build with the `--release` flag omitted. This will open a console window and show further details while the game is running. 
 <!--When building from source please remember to add the `--release`/`-r` flag.-->
 
+## Running Tests
+Unit tests for this project can be run using the commands below
+```bash
+cargo +nightly-2025-12-01 test --target i686-win7-windows-msvc -Z build-std
+```
+If you wish to develop features for this mod, we strongly recommend including tests to ensure that your added functionality works as expected.
 ## Common Problems  
 
 - Game doesn't load: check if the ini is valid according to the example ini provided in this repository, and is placed alongside the mod without any changes to it's name, and check for mod conflicts by disabling all other mods, and adding them back one by one.  
