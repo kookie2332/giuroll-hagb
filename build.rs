@@ -1,8 +1,6 @@
 use std::env;
 
-use winres::{VersionInfo, WindowsResource};
-
-extern crate winres;
+use winresource::{VersionInfo, WindowsResource};
 
 static VERSION_REMARK: Option<&str> = Some("(fork by Hagb)");
 static DLL_REVISION: u16 = 3;

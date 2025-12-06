@@ -56,11 +56,11 @@ rustflags = ["-C", "target-feature=+crt-static"]
 rustflags = ["-C", "target-feature=+crt-static"]
 
 
-[package.metadata.winres]
+[package.metadata.winresource]
 OriginalFilename = "giuroll.dll"
 
 [build-dependencies]
-winres = { version = "0.1", path = "winres" }
+winresource = "0.1"
 
 [dev-dependencies]
 serde_json = "1.0"
