@@ -95,6 +95,9 @@ impl EnemyInputHolder {
     }
 }
 
+#[cfg(test)]
+mod enemy_input_holder_tests;
+
 pub struct Rollbacker {
     pub guessed: Vec<RollFrame>,
 
@@ -846,10 +849,10 @@ pub unsafe fn dump_frame(
         has_called_never_happened: false,
         last_shake_before_smooth: LAST_CAMERA_BEFORE_SMOOTH.clone(),
     };
-    if let Some(time) = &mut DUMP_FRAME_TIME
-        && let Some(now) = now
-    {
-        *time += now.elapsed();
+    if let Some(time) = &mut DUMP_FRAME_TIME {
+        if let Some(now) = now {
+            *time += now.elapsed();
+        }
     }
     f
 }
@@ -955,7 +958,8 @@ impl LL3Holder {
             info!("ll4 is 0 ,painc");
             panic!("ll4 is 0");
         }
-        let c = #[coroutine] || {
+        let c = #[coroutine]
+        || {
             let last = read_ll4(self.ll4);
             let mut last_next = last.next;
             yield last;
@@ -985,7 +989,8 @@ impl LL3Holder {
 
     fn read_all<'a>(&'a self, additional_size: usize) -> impl Iterator<Item = ReadAddr> + 'a {
         //I think that readLL3 does not read itself, however, I will leave this here because it cannot hurt
-        let c = #[coroutine] move || {
+        let c = #[coroutine]
+        move || {
             yield self.to_addr();
             if self.listcount == 0 {
                 yield read_ll4(self.ll4).to_addr();

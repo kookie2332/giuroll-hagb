@@ -778,3 +778,6 @@ pub unsafe fn send_packet_untagged(data: Box<[u8]>) {
         );
     }
 }
+
+#[cfg(test)]
+mod tests;
