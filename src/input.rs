@@ -64,30 +64,3 @@ pub fn input_to_accum(inp: &[bool; INPUT_KEYS_NUMBERS]) -> u16 {
     }
     accum
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_input_to_accum_empty() {
-        let input = [false; INPUT_KEYS_NUMBERS];
-        assert_eq!(input_to_accum(&input), 0);
-    }
-
-    #[test]
-    fn test_input_to_accum_first_bit() {
-        let mut input = [false; INPUT_KEYS_NUMBERS];
-        input[0] = true;
-        assert_eq!(input_to_accum(&input), 1);
-    }
-
-    #[test]
-    fn test_input_to_accum_multiple_bits() {
-        let mut input = [false; INPUT_KEYS_NUMBERS];
-        input[0] = true;
-        input[2] = true;
-        input[4] = true;
-        assert_eq!(input_to_accum(&input), 0b10101);
-    }
-}

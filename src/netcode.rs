@@ -15,22 +15,22 @@ use crate::{
 
 #[derive(Clone, Debug)]
 pub struct NetworkPacket {
-    id: usize,
-    desyncdetect: u8,
+    pub id: usize,
+    pub desyncdetect: u8,
 
-    delay: u8,
-    max_rollback: u8,
+    pub delay: u8,
+    pub max_rollback: u8,
 
-    inputs: Vec<u16>, //also u8 in size? starts out at id + delay
+    pub inputs: Vec<u16>, //also u8 in size? starts out at id + delay
     //confirms: Vec<bool>,
-    last_confirm: usize,
-    sync: Option<i32>,
+    pub last_confirm: usize,
+    pub sync: Option<i32>,
 
-    initial_max_rollback: Option<u8>,
+    pub initial_max_rollback: Option<u8>,
 }
 
 impl NetworkPacket {
-    fn encode(&self) -> Box<[u8]> {
+    pub fn encode(&self) -> Box<[u8]> {
         let mut buf = [0; 400];
         buf[4..8].copy_from_slice(&self.id.to_le_bytes()); //0
         buf[8] = self.desyncdetect;
@@ -778,6 +778,3 @@ pub unsafe fn send_packet_untagged(data: Box<[u8]>) {
         );
     }
 }
-
-#[cfg(test)]
-mod tests;

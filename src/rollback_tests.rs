@@ -1,4 +1,5 @@
-use super::{EnemyInputHolder, INPUT_KEYS_NUMBERS};
+use crate::rollback::EnemyInputHolder;
+use crate::INPUT_KEYS_NUMBERS;
 
 fn make_input(indices: &[usize]) -> [bool; INPUT_KEYS_NUMBERS] {
     let mut input = [false; INPUT_KEYS_NUMBERS];

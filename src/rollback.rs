@@ -46,10 +46,10 @@ pub struct EnemyInputHolder {
 }
 
 impl EnemyInputHolder {
-    fn new() -> Self {
+    pub fn new() -> Self {
         Self { i: Vec::new() }
     }
-    fn get(&self, count: usize) -> RInput {
+    pub fn get(&self, count: usize) -> RInput {
         match self.get_result(count) {
             Ok(x) => x,
             Err(x) => x,
@@ -94,9 +94,6 @@ impl EnemyInputHolder {
         }
     }
 }
-
-#[cfg(test)]
-mod enemy_input_holder_tests;
 
 pub struct Rollbacker {
     pub guessed: Vec<RollFrame>,

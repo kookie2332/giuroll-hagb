@@ -1091,3 +1091,17 @@ unsafe extern "cdecl" fn main_hook(a: *mut ilhook::x86::Registers, _: usize) {
 
 #[cfg(test)]
 mod input_to_accum_tests;
+#[cfg(test)]
+mod input_tests;
+#[cfg(test)]
+mod game_state_tests;
+#[cfg(test)]
+mod timing_tests;
+#[cfg(test)]
+mod version_tests;
+#[cfg(test)]
+mod netcode_tests;
+#[cfg(test)]
+mod ui_tests;
+#[cfg(test)]
+mod rollback_tests;
