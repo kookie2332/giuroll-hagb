@@ -45,9 +45,9 @@ SWRS_ADDR_PBATTLEMGR = 0x0047579c
 ## Building from source
 The mod can be buit with `cargo` using the commands below.
 ```bash
-rustup default nightly-2024-06-18
-rustup component add rust-src --toolchain nightly-2024-06-18
-cargo +nightly-2024-06-18 build --target i686-win7-windows-msvc -Z build-std --release
+rustup default nightly-2025-12-01
+rustup component add rust-src --toolchain nightly-2025-12-01
+cargo +nightly-2025-12-01 build --target i686-win7-windows-msvc -Z build-std --release
 ```
 For debugging/developmental purposes, you may build with the `--release` flag omitted. This will open a console window and show further details while the game is running. 
 <!--When building from source please remember to add the `--release`/`-r` flag.-->
