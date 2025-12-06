@@ -1,14 +1,14 @@
-#![feature(let_chains)]
 #![feature(coroutines)]
 #![feature(iter_from_coroutine)]
 #![feature(anonymous_lifetime_in_impl_trait)]
 #![feature(panic_update_hook)]
-#![feature(panic_info_message)]
 #![feature(stmt_expr_attributes)]
 // we should manually and carefully avoid undefined behavior about
 // references to and any borrowing of static mut variables.
 // shuold be solved before updating to 2024 edition?
 #![allow(static_mut_refs)]
+// Allow unsafe operations in unsafe fn without explicit unsafe blocks (Rust 2024 change)
+#![allow(unsafe_op_in_unsafe_fn)]
 
 use core::slice;
 use std::fmt::Debug;
@@ -130,7 +130,7 @@ fn warning_box(text: &str, title: &str) {
     unsafe {
         use windows::Win32::UI::WindowsAndMessaging::{MessageBoxW, MB_ICONERROR, MB_OK};
         MessageBoxW(
-            HWND(0),
+            None,
             PCWSTR(to_utf_16(text).as_ptr()),
             PCWSTR(to_utf_16(title).as_ptr()),
             MB_OK | MB_ICONERROR,
@@ -229,7 +229,7 @@ const VERSION_STR: &str = env!("CARGO_PKG_VERSION");
 /// Compare GR version with version_string, following Semantic Versioning 2.0.0 (https://semver.org/).
 /// It returns false if version_string is an invalid version string, or
 /// returns true and assign *result = 0 (GR version = version_str), -1 (GR version < version_str), or 1 (GR version > version_str), if version_str is valid
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn compareVersionString(
     version_string: *const c_char,
     result: *mut i32,
@@ -249,7 +249,7 @@ pub unsafe extern "C" fn compareVersionString(
 }
 
 /// Returns version string
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn getVersionString() -> *const c_char {
     static VERSION_CSTRING: Mutex<Option<std::ffi::CString>> = Mutex::new(None);
     let mut string = VERSION_CSTRING.lock().unwrap();
@@ -261,7 +261,7 @@ pub extern "C" fn getVersionString() -> *const c_char {
 
 /// Return GR version with given version, where version values consist of four 16 bit words, e.g.
 /// `MAJOR << 48 | MINOR << 32 | PATCH << 16 | RELEASE`.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn getVersion() -> u64 {
     return env!("DLL_VERSION").parse::<u64>().unwrap();
 }
@@ -269,7 +269,7 @@ pub unsafe extern "C" fn getVersion() -> u64 {
 /// Compare GR version with given version, where version values consist of four 16 bit words, e.g.
 /// `MAJOR << 48 | MINOR << 32 | PATCH << 16 | RELEASE`.
 /// It returns 0 (GR version = version_str), -1 (GR version < version_str), or 1 (GR version > version_str).
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn compareVersion(version: u64) -> i32 {
     match env!("DLL_VERSION").parse::<u64>().unwrap().cmp(&version) {
         std::cmp::Ordering::Equal => 0,
@@ -278,29 +278,29 @@ pub unsafe extern "C" fn compareVersion(version: u64) -> i32 {
     }
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn getPriority() -> i32 {
     1000
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn addRollbackCb(cb: *const Callbacks) {
     CALLBACK_ARRAY.push(*cb);
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn InitializeByLoader(dllmodule: HMODULE) -> bool {
     initialize(dllmodule, true)
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn Initialize(dllmodule: HMODULE) -> bool {
     initialize(dllmodule, false)
 }
 
 fn initialize(dllmodule: HMODULE, pretend_to_be_vanilla: bool) -> bool {
     let mut dat = [0u16; 1025];
-    unsafe { GetModuleFileNameW(dllmodule, &mut dat) };
+    unsafe { GetModuleFileNameW(Some(dllmodule), &mut dat) };
 
     let s = std::ffi::OsString::from_wide(&dat);
 
@@ -333,7 +333,7 @@ fn initialize(dllmodule: HMODULE, pretend_to_be_vanilla: bool) -> bool {
 }
 //687040 true real input buffer manipulation
 // 85b8ec some related varible, 487040
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "cdecl" fn CheckVersion(a: *const [u8; 16]) -> bool {
     const HASH110A: [u8; 16] = [
         0xdf, 0x35, 0xd1, 0xfb, 0xc7, 0xb5, 0x83, 0x31, 0x7a, 0xda, 0xbe, 0x8c, 0xd9, 0xf5, 0x3b,
@@ -1948,7 +1948,7 @@ fn truer_exec(filename: PathBuf, pretend_to_be_vanilla: bool) -> Result<(), Stri
             }
             WARNING_FRAME_LOST_COUNTDOWN.store(115, Relaxed);
         } else {
-            WaitForSingleObject(HANDLE(waithandle as isize), ddiff as u32);
+            WaitForSingleObject(HANDLE(waithandle as *mut c_void), ddiff as u32);
             if SPIN_TIME_MICROSECOND != 0 {
                 loop {
                     let r1 = m.elapsed().as_micros();
@@ -1957,11 +1957,15 @@ fn truer_exec(filename: PathBuf, pretend_to_be_vanilla: bool) -> Result<(), Stri
                     }
                 }
             }
-            if let Ok(event) = SOKU_LOOP_EVENT.lock() {
-                // if the last signal hasn't been reset by the loop
-                if let Some(event) = *event
-                    && WaitForSingleObject(HANDLE(event), 0).0 == 0
-                {
+            if let Ok(event_lock) = SOKU_LOOP_EVENT.lock() {
+                // Was the event signaled this frame?
+                let signaled = if let Some(event) = *event_lock {
+                    WaitForSingleObject(HANDLE(event as *mut c_void), 0).0 == 0
+                } else {
+                    false
+                };
+
+                if signaled {
                     println!("frame costed too much time!");
                     WARNING_FRAME_LOST_COUNTDOWN.store(115, Relaxed);
                 } else if WARNING_FRAME_LOST_COUNTDOWN.load(Relaxed) != 0 {
@@ -2092,7 +2096,7 @@ fn truer_exec(filename: PathBuf, pretend_to_be_vanilla: bool) -> Result<(), Stri
             loop {
                 std::thread::sleep(Duration::from_millis(3000));
                 let hwnd = *(0x89ff90 as *const HWND);
-                if hwnd == windows::Win32::Foundation::HWND(0) {
+                if hwnd == windows::Win32::Foundation::HWND(std::ptr::null_mut()) {
                     continue;
                 }
                 let mut origin_title = [0u16; 1024];
@@ -2131,7 +2135,7 @@ fn truer_exec(filename: PathBuf, pretend_to_be_vanilla: bool) -> Result<(), Stri
     Ok(())
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "cdecl" fn cleanup() {
     if ISDEBUG {
         #[cfg(feature = "logtofile")]
@@ -2189,7 +2193,7 @@ unsafe fn fill_random(addr: usize, size: Option<usize>) {
         if rng.gen_ratio(3, 4) {
             *byte = 0;
         } else {
-            *byte = rng.gen();
+            *byte = rng.r#gen();
         }
     }
 }
@@ -2208,7 +2212,7 @@ macro_rules! soku_heap_free {
             fill_random(a, None);
         }
         HeapFree(
-            HANDLE(*(0x89b404 as *const isize)),
+            HANDLE(*(0x89b404 as *const *mut c_void)),
             HEAP_FLAGS(0),
             Some(a as *const c_void),
         )
@@ -2232,7 +2236,7 @@ unsafe extern "stdcall" fn heap_free_override(heap: isize, flags: u32, s: *const
         || GetCurrentThreadId() != REQUESTED_THREAD_ID.load(Relaxed)
         || *SOKU_FRAMECOUNT == 0
     {
-        return HeapFree(HANDLE(heap), HEAP_FLAGS(flags as u32), Some(s)).is_ok() as i32;
+        return HeapFree(HANDLE(heap as *mut c_void), HEAP_FLAGS(flags as u32), Some(s)).is_ok() as i32;
     }
 
     unsafe {
@@ -2284,13 +2288,13 @@ fn store_alloc(u: usize) {
 
 static mut LIKELY_DESYNCED: bool = false;
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "cdecl" fn is_likely_desynced() -> bool {
     unsafe { LIKELY_DESYNCED }
 }
 
 unsafe extern "stdcall" fn heap_alloc_override(heap: isize, flags: u32, s: usize) -> *mut c_void {
-    let ret = HeapAlloc(HANDLE(heap), HEAP_FLAGS(flags), s);
+    let ret = HeapAlloc(HANDLE(heap as *mut c_void), HEAP_FLAGS(flags), s);
 
     if *(0x89b404 as *const usize) != heap as usize
         /*|| !matches!(*(0x8a0040 as *const u8), 0x5 | 0xe | 0xd)*/
