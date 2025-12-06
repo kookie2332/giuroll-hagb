@@ -15,9 +15,9 @@ use windows::Win32::Foundation::HANDLE;
 #[allow(unused_imports)]
 use crate::println;
 use crate::{
-    ptr_wrap, set_input_buffer, soku_heap_free, Callbacks, CameraTransform, CALLBACK_ARRAY,
-    INPUT_KEYS_NUMBERS, ISDEBUG, LAST_CAMERA_BEFORE_SMOOTH, MEMORY_RECEIVER_ALLOC,
-    MEMORY_RECEIVER_FREE, SOKU_FRAMECOUNT, SOUND_MANAGER,
+    camera::{draw_block, CameraTransform, LAST_CAMERA_BEFORE_SMOOTH},
+    ptr_wrap, set_input_buffer, soku_heap_free, Callbacks, CALLBACK_ARRAY, INPUT_KEYS_NUMBERS,
+    ISDEBUG, MEMORY_RECEIVER_ALLOC, MEMORY_RECEIVER_FREE, SOKU_FRAMECOUNT, SOUND_MANAGER,
 };
 
 type RInput = [bool; INPUT_KEYS_NUMBERS];

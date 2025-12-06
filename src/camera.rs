@@ -9,8 +9,8 @@ use crate::{println, GiurollConfig, SOKU_FRAMECOUNT};
 
 #[derive(Debug, Clone, Copy)]
 #[repr(C)]
-struct F32 {
-    f: f32,
+pub(crate) struct F32 {
+    pub f: f32,
 }
 
 impl PartialEq for F32 {
@@ -89,7 +89,7 @@ impl XY {
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
-struct CameraTransform {
+pub(crate) struct CameraTransform {
     scale_affected_only_by_smooth: F32,
     xy_affected_only_by_smooth: XY,
     shake_degress_affected_only_by_smooth: [F32; 2],
@@ -151,13 +151,13 @@ impl CameraTransform {
 
 static mut CAMERA_ACTUAL_SMOOTH_TRANSFORM: Option<CameraTransform> = None;
 static mut LAST_IDEAL_CAMERA: Option<CameraTransform> = None;
-static mut LAST_CAMERA_BEFORE_SMOOTH: Option<CameraTransform> = None;
-static mut SMOOTH_ENABLED_CONFIG: bool = true;
+pub(crate) static mut LAST_CAMERA_BEFORE_SMOOTH: Option<CameraTransform> = None;
+pub(crate) static mut SMOOTH_ENABLED_CONFIG: bool = true;
 static mut SMOOTH_INCREASING_SCALE_CORRECTION: Option<f32> = None;
 static mut SMOOTH_DECREASING_SCALE_CORRECTION: Option<f32> = None;
 static mut SMOOTH_X_CORRECTION: Option<f32> = None;
 static mut SMOOTH_Y_CORRECTION: Option<f32> = None;
-static mut SMOOTH: bool = false;
+pub(crate) static mut SMOOTH: bool = false;
 
 static mut LAST_SMOOTHED_FRAMECOUNT: usize = 0;
 
