@@ -24,14 +24,14 @@ type RInput = [bool; INPUT_KEYS_NUMBERS];
 
 pub static mut CHARSIZEDATA: Vec<(usize, usize)> = vec![];
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "cdecl" fn set_char_data_size(s: usize) {
     while CHARSIZEDATA.len() < s {
         CHARSIZEDATA.push((0, 0))
     }
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "cdecl" fn set_char_data_pos(pos: usize, a: usize, b: usize) {
     set_char_data_size(pos);
     CHARSIZEDATA[pos] = (a, b);
@@ -857,7 +857,7 @@ pub unsafe fn dump_frame(
 pub fn read_heap(pos: usize) -> usize {
     unsafe {
         windows::Win32::System::Memory::HeapSize(
-            HANDLE(*(0x89b404 as *const isize)),
+            HANDLE(*(0x89b404 as *const *mut c_void)),
             windows::Win32::System::Memory::HEAP_FLAGS(0),
             pos as *const c_void,
         )
