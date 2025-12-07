@@ -45,7 +45,7 @@ jobs:
           submodules: recursive
       - uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: nightly-2024-06-18
+          toolchain: nightly-2025-12-01
           components: rust-src
       - name: Build giuroll.dll
         run: |
