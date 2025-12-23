@@ -1,22 +1,14 @@
 use std::env;
 
-use winres::{VersionInfo, WindowsResource};
+use std::path::Path;
 
-extern crate winres;
+use winresource::{VersionInfo, WindowsResource};
+
+extern crate winresource;
 
 static VERSION_REMARK: Option<&str> = Some("(fork by Hagb)");
 static DLL_REVISION: u16 = 3;
 fn main() {
-    let mut res = WindowsResource::new();
-    if cfg!(unix) {
-        // from https://github.com/mxre/winres/blob/1807bec3552cd2f0d0544420584d6d78be5e3636/example/build.rs#L10
-        res.set_toolkit_path("/home/hagb/my_msvc/");
-        // ar tool for mingw in toolkit path
-        res.set_ar_path("/usr/i686-w64-mingw32/bin/ar");
-        // windres tool
-        res.set_windres_path("/usr/bin/i686-w64-mingw32-windres");
-    }
-
     let mut version = 0_u64;
     version |= env::var("CARGO_PKG_VERSION_MAJOR")
         .unwrap()
@@ -34,6 +26,46 @@ fn main() {
         .unwrap()
         << 16;
     version |= DLL_REVISION as u64;
+
+    println!("cargo:rustc-env=DLL_REVISION={}", DLL_REVISION);
+    if let Some(remark) = VERSION_REMARK {
+        println!("cargo:rustc-env=VERSION_REMARK={}", remark);
+    }
+    println!("cargo:rustc-env=DLL_VERSION={}", version);
+
+    if env::var("CARGO_CFG_WINDOWS").is_err() {
+        println!("cargo:warning=Skipping winresource because target platform is not Windows");
+        return;
+    }
+
+    if env::var("CARGO_CFG_TARGET_ENV").as_deref() == Ok("msvc")
+        && env::var("HOST")
+            .map(|h| !h.contains("windows"))
+            .unwrap_or(false)
+    {
+        println!("cargo:warning=Skipping winresource because MSVC resource tools are unavailable on this host");
+        return;
+    }
+
+    if !Path::new("resource.rc").exists() {
+        println!("cargo:warning=Skipping winresource because resource.rc is missing");
+        return;
+    }
+
+    let mut res = WindowsResource::new();
+    if cfg!(unix) {
+        let ar_path = "/usr/i686-w64-mingw32/bin/ar";
+        let windres_path = "/usr/bin/i686-w64-mingw32-windres";
+
+        if Path::new(ar_path).exists() {
+            res.set_ar_path(ar_path);
+        }
+
+        if Path::new(windres_path).exists() {
+            res.set_windres_path(windres_path);
+        }
+    }
+
     res.set_version_info(VersionInfo::FILEVERSION, version);
     res.set_version_info(VersionInfo::PRODUCTVERSION, version);
 
@@ -69,12 +101,6 @@ fn main() {
         )
         .as_str(),
     );
-
-    println!("cargo:rustc-env=DLL_REVISION={}", DLL_REVISION);
-    if let Some(remark) = VERSION_REMARK {
-        println!("cargo:rustc-env=VERSION_REMARK={}", remark);
-    }
-    println!("cargo:rustc-env=DLL_VERSION={}", version);
 
     if let Err(e) = res.compile() {
         eprintln!("{}", e);

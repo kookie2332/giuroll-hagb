@@ -1,12 +1,13 @@
 use crate::{
+    camera::{F32, SMOOTH, SMOOTH_ENABLED_CONFIG},
     change_delay_from_keys, draw_num, draw_num_x_center, get_num_length, pause, println, ptr_wrap,
     read_current_input, read_key_better, resume,
     rollback::{dump_frame, Frame, DUMP_FRAME_TIME},
     soku_heap_free, CENTER_X_P1, CENTER_X_P2, CENTER_Y_P1, CENTER_Y_P2, DISABLE_SOUND,
-    ENABLE_CHECK_MODE, F32, INPUT_KEYS_NUMBERS, INSIDE_COLOR, INSIDE_HALF_HEIGHT,
-    INSIDE_HALF_WIDTH, LAST_DELAY_VALUE_TAKEOVER, MEMORY_RECEIVER_ALLOC, MEMORY_RECEIVER_FREE,
-    NEXT_DRAW_ROLLBACK, OUTER_COLOR, OUTER_HALF_HEIGHT, OUTER_HALF_WIDTH, PROGRESS_COLOR,
-    REAL_INPUT, REAL_INPUT2, SMOOTH, SMOOTH_ENABLED_CONFIG, SOKU_FRAMECOUNT, TAKEOVER_COLOR,
+    ENABLE_CHECK_MODE, INPUT_KEYS_NUMBERS, INSIDE_COLOR, INSIDE_HALF_HEIGHT, INSIDE_HALF_WIDTH,
+    LAST_DELAY_VALUE_TAKEOVER, MEMORY_RECEIVER_ALLOC, MEMORY_RECEIVER_FREE, NEXT_DRAW_ROLLBACK,
+    OUTER_COLOR, OUTER_HALF_HEIGHT, OUTER_HALF_WIDTH, PROGRESS_COLOR, REAL_INPUT, REAL_INPUT2,
+    SOKU_FRAMECOUNT, TAKEOVER_COLOR,
 };
 use std::{
     collections::{HashMap, HashSet, VecDeque},
@@ -146,31 +147,31 @@ pub unsafe fn render_replay_progress_bar_and_numbers() {
 
     let mut center_x = CENTER_X_P1;
     let mut center_y = CENTER_Y_P1;
-    if let Some(replay) = &RE_PLAY
-        && replay.is_p2
-    {
-        center_x = CENTER_X_P2;
-        center_y = CENTER_Y_P2;
+    if let Some(replay) = &RE_PLAY {
+        if replay.is_p2 {
+            center_x = CENTER_X_P2;
+            center_y = CENTER_Y_P2;
+        }
     }
 
     // crenderer_begin();
 
-    if RE_PLAY_PAUSE == 0
-        && let Some(replay) = &RE_PLAY
-    {
-        let frame_count = (*SOKU_FRAMECOUNT - replay.frame) as i32;
-        let frame_half_len = (get_num_length(frame_count, true) / 2.0) as i32;
-        let outer = D3DRECT {
-            x1: center_x - frame_half_len,
-            x2: center_x + frame_half_len,
-            y1: center_y - OUTER_HALF_HEIGHT,
-            y2: center_y + OUTER_HALF_HEIGHT,
-        };
-        (**D3D9_DEVICE).Clear(1, &outer, D3DCLEAR_TARGET, TAKEOVER_COLOR, 0.0, 0);
-        draw_num_x_center(
-            (center_x as f32, (center_y - INSIDE_HALF_HEIGHT) as f32),
-            frame_count,
-        );
+    if RE_PLAY_PAUSE == 0 {
+        if let Some(replay) = &RE_PLAY {
+            let frame_count = (*SOKU_FRAMECOUNT - replay.frame) as i32;
+            let frame_half_len = (get_num_length(frame_count, true) / 2.0) as i32;
+            let outer = D3DRECT {
+                x1: center_x - frame_half_len,
+                x2: center_x + frame_half_len,
+                y1: center_y - OUTER_HALF_HEIGHT,
+                y2: center_y + OUTER_HALF_HEIGHT,
+            };
+            (**D3D9_DEVICE).Clear(1, &outer, D3DCLEAR_TARGET, TAKEOVER_COLOR, 0.0, 0);
+            draw_num_x_center(
+                (center_x as f32, (center_y - INSIDE_HALF_HEIGHT) as f32),
+                frame_count,
+            );
+        }
     } else {
         let outer = D3DRECT {
             x1: center_x - OUTER_HALF_WIDTH,
@@ -464,11 +465,12 @@ pub unsafe fn handle_replay(
     //     PAUSESTATE.load(Relaxed)
     // );
 
-    if *cur_speed_iter + 1 >= *cur_speed
-        && let Some(t) = LAST_TARGET.take()
-        && t != framecount
-    {
-        println!("mistake frame {}, should be {}", framecount, t);
+    if *cur_speed_iter + 1 >= *cur_speed {
+        if let Some(t) = LAST_TARGET.take() {
+            if t != framecount {
+                println!("mistake frame {}, should be {}", framecount, t);
+            }
+        }
     }
 
     if *cur_speed_iter == 0 && framecount >= 2 {
@@ -691,11 +693,13 @@ pub unsafe fn handle_replay(
                                 (false, true) => (being_tested_frame, cur_rollback + 1, false),
                                 (true, true) => {
                                     // println!("clear frame {}", being_tested_frame);
-                                    while let Some(frame) = FRAMES.front_mut()
-                                        && frame.number <= being_tested_frame_
-                                    {
-                                        frame.did_happen();
-                                        FRAMES.pop_front();
+                                    while let Some(frame) = FRAMES.front_mut() {
+                                        if frame.number <= being_tested_frame_ {
+                                            frame.did_happen();
+                                            FRAMES.pop_front();
+                                        } else {
+                                            break;
+                                        }
                                     }
                                     if being_tested_frame % 300 == 0 {
                                         println!(
@@ -741,11 +745,13 @@ pub unsafe fn handle_replay(
                 override_target_frame = Some(test.base_framecount as u32);
             }
         } else if framecount == test.base_framecount {
-            while let Some(frame) = FRAMES.front_mut()
-                && frame.number < test.base_framecount
-            {
-                frame.did_happen();
-                FRAMES.pop_front();
+            while let Some(frame) = FRAMES.front_mut() {
+                if frame.number < test.base_framecount {
+                    frame.did_happen();
+                    FRAMES.pop_front();
+                } else {
+                    break;
+                }
             }
             override_target_frame = Some(
                 (test.base_framecount + test.max_rollback - 1)

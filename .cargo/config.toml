@@ -1,0 +1,6 @@
+[env]
+RUST_TARGET_PATH = { value = "targets" }
+
+[target.i686-win7-windows-msvc]
+linker = "rust-lld"
+rustflags = ["-A", "missing_docs"]

@@ -15,9 +15,9 @@ use windows::Win32::Foundation::HANDLE;
 #[allow(unused_imports)]
 use crate::println;
 use crate::{
-    ptr_wrap, set_input_buffer, soku_heap_free, Callbacks, CameraTransform, CALLBACK_ARRAY,
-    INPUT_KEYS_NUMBERS, ISDEBUG, LAST_CAMERA_BEFORE_SMOOTH, MEMORY_RECEIVER_ALLOC,
-    MEMORY_RECEIVER_FREE, SOKU_FRAMECOUNT, SOUND_MANAGER,
+    camera::{CameraTransform, LAST_CAMERA_BEFORE_SMOOTH},
+    ptr_wrap, set_input_buffer, soku_heap_free, Callbacks, CALLBACK_ARRAY, INPUT_KEYS_NUMBERS,
+    ISDEBUG, MEMORY_RECEIVER_ALLOC, MEMORY_RECEIVER_FREE, SOKU_FRAMECOUNT, SOUND_MANAGER,
 };
 
 type RInput = [bool; INPUT_KEYS_NUMBERS];
@@ -46,10 +46,10 @@ pub struct EnemyInputHolder {
 }
 
 impl EnemyInputHolder {
-    fn new() -> Self {
+    pub fn new() -> Self {
         Self { i: Vec::new() }
     }
-    fn get(&self, count: usize) -> RInput {
+    pub fn get(&self, count: usize) -> RInput {
         match self.get_result(count) {
             Ok(x) => x,
             Err(x) => x,
@@ -846,10 +846,10 @@ pub unsafe fn dump_frame(
         has_called_never_happened: false,
         last_shake_before_smooth: LAST_CAMERA_BEFORE_SMOOTH.clone(),
     };
-    if let Some(time) = &mut DUMP_FRAME_TIME
-        && let Some(now) = now
-    {
-        *time += now.elapsed();
+    if let Some(time) = &mut DUMP_FRAME_TIME {
+        if let Some(now) = now {
+            *time += now.elapsed();
+        }
     }
     f
 }
@@ -955,7 +955,8 @@ impl LL3Holder {
             info!("ll4 is 0 ,painc");
             panic!("ll4 is 0");
         }
-        let c = #[coroutine] || {
+        let c = #[coroutine]
+        || {
             let last = read_ll4(self.ll4);
             let mut last_next = last.next;
             yield last;
@@ -985,7 +986,8 @@ impl LL3Holder {
 
     fn read_all<'a>(&'a self, additional_size: usize) -> impl Iterator<Item = ReadAddr> + 'a {
         //I think that readLL3 does not read itself, however, I will leave this here because it cannot hurt
-        let c = #[coroutine] move || {
+        let c = #[coroutine]
+        move || {
             yield self.to_addr();
             if self.listcount == 0 {
                 yield read_ll4(self.ll4).to_addr();
